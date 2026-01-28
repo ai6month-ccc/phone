@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Predict: 手勢辨識骨架顯示版</title>
+    <!-- 07: 載入 MediaPipe 必要的 JS 資源 -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+    <style>
+        body { font-family: sans-serif; background-color: #1a1a1a; color: white; text-align: center; margin: 0; padding: 20px; overflow: hidden; }
+        .container { position: relative; display: inline-block; width: 100%; max-width: 500px; }
+        #video_input { width: 100%; transform: scaleX(-1); border-radius: 10px; display: none; }
+        #output_canvas { width: 100%; transform: scaleX(-1); border: 2px solid #555; border-radius: 10px; }
+        #status_box { font-size: 48px; font-weight: bold; margin-top: 20px; padding: 10px; color: #00ff00; background: #333; border-radius: 15px; }
+        .info { color: #aaa; margin-top: 10px; font-size: 14px; }
+    </style>
+</head>
+<body>
+
+    <h2>Predict: 剪刀石頭布 (骨架偵測)</h2>
+    <div class="container">
+        <video id="video_input" playsinline></video>
+        <!-- 23: 新增畫布用來繪製關鍵點 -->
+        <canvas id="output_canvas"></canvas>
+    </div>
+    <div id="status_box">Unknown (4)</div>
+    <div class="info">請在鏡頭前展示手勢，將顯示偵測點</div>
+
+    <script>
+        const video_element = document.getElementById('video_input'); // video_element (影片元素物件)
+        const canvas_element = document.getElementById('output_canvas'); // canvas_element (畫布元素物件)
+        const canvas_ctx = canvas_element.getContext('2d'); // canvas_ctx (畫布繪圖上下文)
+        const status_box = document.getElementById('status_box'); // status_box (狀態顯示方塊)
+
+        // 33: 初始化繪圖工具
+        const mp_drawing = window; // mp_drawing (全域繪圖工具)
+
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.7,
+            minTrackingConfidence: 0.5
+        });
+
+        hands.onResults((results) => {
+            // 47: 設定畫布大小與影片同步
+            canvas_element.width = video_element.videoWidth;
+            canvas_element.height = video_element.videoHeight;
+
+            // 51: 清除並繪製當前影像
+            canvas_ctx.save();
+            canvas_ctx.clearRect(0, 0, canvas_element.width, canvas_element.height);
+            canvas_ctx.drawImage(results.image, 0, 0, canvas_element.width, canvas_element.height);
+
+            let gesture = "Unknown"; // gesture (手勢名稱)
+            let gesture_code = "4"; // gesture_code (手勢代碼)
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                for (const landmarks of results.multiHandLandmarks) {
+                    // 61: 【新增】在畫面上繪製關鍵點與連接線
+                    drawConnectors(canvas_ctx, landmarks, HAND_CONNECTIONS, {color: '#00FF00', lineWidth: 5});
+                    drawLandmarks(canvas_ctx, landmarks, {color: '#FF0000', lineWidth: 2});
+
+                    // 65: 您的判斷邏輯
+                    const i_up = landmarks[8].y < landmarks[6].y;
+                    const m_up = landmarks[12].y < landmarks[10].y;
+                    const r_up = landmarks[16].y < landmarks[14].y;
+                    const p_up = landmarks[20].y < landmarks[18].y;
+
+                    if (i_up && m_up && !r_up && !p_up) {
+                        gesture = "Scissors"; gesture_code = "1";
+                    } else if (!i_up && !m_up && !r_up && !p_up) {
+                        gesture = "Rock"; gesture_code = "2";
+                    } else if (i_up && m_up && r_up && p_up) {
+                        gesture = "Paper"; gesture_code = "3";
+                    } else {
+                        gesture = "Unknown"; gesture_code = "4";
+                    }
+                }
+            }
+            canvas_ctx.restore();
+            status_box.innerText = `${gesture} (${gesture_code})`;
+        });
+
+        const camera = new Camera(video_element, {
+            onFrame: async () => {
+                await hands.send({image: video_element});
+            },
+            width: 640,
+            height: 480
+        });
+        camera.start();
+    </script>
+</body>
+</html>
